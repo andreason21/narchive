@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0a0a0a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>나처럼 생각하는 LLM</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #161616;
+    --surface-2: #1f1f1f;
+    --border: #2a2a2a;
+    --text: #e8e8e8;
+    --muted: #888;
+    --accent: #d4a574;
+    --accent-2: #7faec7;
+    --danger: #c66;
+    --success: #6c9;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    height: 100%;
+    overflow-x: hidden;
+  }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+
+  header {
+    padding: 16px 20px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0; font-size: 18px; font-weight: 600;
+    color: var(--accent);
+  }
+  header p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 16px 100px;
+  }
+
+  nav.tabs {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: 10;
+  }
+  nav.tabs button {
+    background: none; border: none;
+    color: var(--muted);
+    padding: 12px 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  nav.tabs button.active { color: var(--accent); }
+  nav.tabs button .icon {
+    display: block; font-size: 18px; margin-bottom: 2px;
+  }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .card h2 {
+    margin: 0 0 8px; font-size: 15px; font-weight: 500;
+  }
+  .card p, .card .text { font-size: 14px; line-height: 1.6; color: var(--text); margin: 0; }
+  .meta {
+    font-size: 11px; color: var(--muted);
+    margin-top: 8px; display: flex; justify-content: space-between;
+  }
+
+  button.primary {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  button.primary:active { transform: scale(0.98); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  button.secondary {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+
+  textarea, input[type="text"] {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  textarea { min-height: 100px; }
+  textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+
+  /* 녹음 버튼 */
+  .record-section { text-align: center; padding: 20px 0; }
+  .record-btn {
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    border: 3px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-size: 40px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .record-btn.recording {
+    background: var(--danger); border-color: var(--danger); color: #fff;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(204, 102, 102, 0.6); }
+    50% { box-shadow: 0 0 0 16px rgba(204, 102, 102, 0); }
+  }
+  .record-status { font-size: 13px; color: var(--muted); margin-top: 12px; min-height: 18px; }
+  .record-timer { font-size: 28px; color: var(--accent); margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+  /* 인터뷰 chat */
+  .chat-msg {
+    max-width: 88%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .chat-msg.assistant {
+    background: var(--surface-2);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+  .chat-msg.user {
+    background: var(--accent);
+    color: #000;
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+  }
+
+  /* Spine 문서 */
+  .spine-content {
+    font-size: 14px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  .spine-content h1 { font-size: 18px; color: var(--accent); margin: 16px 0 8px; }
+  .spine-content h2 { font-size: 15px; color: var(--accent-2); margin: 14px 0 6px; }
+  .spine-content code {
+    background: var(--surface-2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  /* loading */
+  .loading {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    background: var(--surface-2);
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .pill.voice { color: var(--accent); }
+  .pill.decision { color: var(--accent-2); }
+  .pill.interview { color: var(--success); }
+
+  .empty {
+    text-align: center; color: var(--muted);
+    padding: 40px 20px; font-size: 13px;
+  }
+
+  .ask-input-wrap {
+    display: flex; gap: 8px; margin-bottom: 12px;
+  }
+  .ask-input-wrap input { flex: 1; }
+  .ask-input-wrap button { width: auto; padding: 10px 16px; }
+
+  .ask-response {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 14px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    margin-top: 12px;
+    min-height: 60px;
+  }
+  .ask-meta {
+    font-size: 11px; color: var(--muted); margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>나처럼 생각하는 LLM</h1>
+  <p>음성 캡처 · 인터뷰 · Spine 추출 · RAG 기반 응답</p>
+</header>
+
+<main>
+
+  <!-- ───── Tab 1: Capture ───── -->
+  <section id="panel-capture" class="panel active">
+    <div class="card">
+      <h2>음성 일기 / 메모 녹음</h2>
+      <div class="record-section">
+        <button id="recordBtn" class="record-btn">●</button>
+        <div class="record-timer" id="recordTimer">00:00</div>
+        <div class="record-status" id="recordStatus">탭해서 녹음 시작</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>의사결정 로그 (텍스트)</h2>
+      <textarea id="decisionText" placeholder="결정: ...&#10;이유: ...&#10;안 한 옵션: ...&#10;안 한 이유: ..."></textarea>
+      <div style="margin-top: 10px;">
+        <button id="saveDecisionBtn" class="primary">저장</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>저장된 기록 <span id="entryCount" class="pill">0</span></h2>
+      <div id="entriesList"></div>
+    </div>
+  </section>
+
+  <!-- ───── Tab 2: Interview ───── -->
+  <section id="panel-interview" class="panel">
+    <div class="card">
+      <h2>AI 심층 인터뷰</h2>
+      <p style="color: var(--muted); font-size: 13px;">
+        Stanford 인터뷰 프로토콜로 너의 가치관을 깊이 끌어내. 종료 시 답변이 자동 저장됨.
+      </p>
+    </div>
+    <div id="chatContainer"></div>
+    <div class="card" style="margin-top: 12px;">
+      <textarea id="chatInput" placeholder="답변을 입력하거나 마이크 사용..."></textarea>
+      <div style="display: flex; gap: 8px; margin-top: 10px;">
+        <button id="sendChatBtn" class="primary" style="flex: 1;">보내기</button>
+        <button id="endInterviewBtn" class="secondary" style="flex: 1;">인터뷰 종료·저장</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Tab 3: Spine ───── -->
+  <section id="panel-spine" class="panel">
+    <div class="card">
+      <h2>Decision Spine</h2>
+      <p style="color: var(--muted); font-size: 13px;">
+        지금까지의 모든 캡처에서 너의 가치관·휴리스틱·신념을 추출. Ask Me의 backbone이 됨.
+      </p>
+      <div style="margin-top: 12px;">
+        <button id="extractSpineBtn" class="primary">Spine 재추출</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="spineContent" class="spine-content">
+        <div class="empty">아직 추출되지 않음. 위 버튼을 눌러 시작하세요.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Tab 4: Ask Me ───── -->
+  <section id="panel-ask" class="panel">
+    <div class="card">
+      <h2>너처럼 답하는 LLM</h2>
+      <p style="color: var(--muted); font-size: 13px;">
+        Spine + 관련 과거 기록을 RAG로 가져와 너의 사고방식으로 응답.
+      </p>
+    </div>
+    <div class="card">
+      <div class="ask-input-wrap">
+        <input type="text" id="askInput" placeholder="예: 지금 이직 제안 받으면 어떻게 할 것 같아?" />
+        <button id="askBtn" class="primary">물어보기</button>
+      </div>
+      <div id="askResponse" class="ask-response" style="display: none;"></div>
+      <div id="askMeta" class="ask-meta"></div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-panel="capture"><span class="icon">●</span>캡처</button>
+  <button class="tab-btn" data-panel="interview"><span class="icon">◐</span>인터뷰</button>
+  <button class="tab-btn" data-panel="spine"><span class="icon">◇</span>Spine</button>
+  <button class="tab-btn" data-panel="ask"><span class="icon">?</span>Ask Me</button>
+</nav>
+
+<script>
+// ─────────────────────────────────────────────
+// 탭 전환
+// ─────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const panel = btn.dataset.panel;
+    document.getElementById('panel-' + panel).classList.add('active');
+    if (panel === 'capture') refreshEntries();
+    if (panel === 'spine') loadSpine();
+  });
+});
+
+// ─────────────────────────────────────────────
+// 음성 녹음 (MediaRecorder)
+// ─────────────────────────────────────────────
+let mediaRecorder = null;
+let audioChunks = [];
+let recordStartTime = 0;
+let timerInterval = null;
+
+const recordBtn = document.getElementById('recordBtn');
+const recordTimer = document.getElementById('recordTimer');
+const recordStatus = document.getElementById('recordStatus');
+
+recordBtn.addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    stopRecording();
+  } else {
+    await startRecording();
+  }
+});
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    // webm/opus가 가장 호환성 좋음
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm';
+    mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(audioChunks, { type: mime });
+      await uploadAudio(blob, mime);
+    };
+    mediaRecorder.start();
+    recordStartTime = Date.now();
+    recordBtn.classList.add('recording');
+    recordBtn.textContent = '■';
+    recordStatus.textContent = '녹음 중... 다시 탭하면 종료';
+    timerInterval = setInterval(updateTimer, 100);
+  } catch (err) {
+    recordStatus.textContent = '마이크 권한이 필요해요: ' + err.message;
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder) mediaRecorder.stop();
+  recordBtn.classList.remove('recording');
+  recordBtn.textContent = '●';
+  recordStatus.innerHTML = '<span class="loading"></span>변환 중...';
+  clearInterval(timerInterval);
+}
+
+function updateTimer() {
+  const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  recordTimer.textContent = `${m}:${s}`;
+}
+
+async function uploadAudio(blob, mime) {
+  const fd = new FormData();
+  fd.append('audio', blob, 'recording.webm');
+  try {
+    const res = await fetch('/api/capture/audio', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.text) {
+      recordStatus.textContent = `저장됨: "${data.text.slice(0, 50)}..."`;
+      recordTimer.textContent = '00:00';
+      refreshEntries();
+    } else {
+      recordStatus.textContent = '오류: ' + (data.detail || '알 수 없음');
+    }
+  } catch (e) {
+    recordStatus.textContent = '업로드 실패: ' + e.message;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Decision log 텍스트 저장
+// ─────────────────────────────────────────────
+document.getElementById('saveDecisionBtn').addEventListener('click', async () => {
+  const text = document.getElementById('decisionText').value.trim();
+  if (!text) return;
+  const btn = document.getElementById('saveDecisionBtn');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    const res = await fetch('/api/capture/text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, entry_type: 'decision_log' }),
+    });
+    if (res.ok) {
+      document.getElementById('decisionText').value = '';
+      refreshEntries();
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = '저장';
+  }
+});
+
+// ─────────────────────────────────────────────
+// Entry 목록
+// ─────────────────────────────────────────────
+async function refreshEntries() {
+  const res = await fetch('/api/entries?limit=20');
+  const data = await res.json();
+  const list = document.getElementById('entriesList');
+  document.getElementById('entryCount').textContent = data.entries.length;
+  if (data.entries.length === 0) {
+    list.innerHTML = '<div class="empty">아직 기록이 없습니다.</div>';
+    return;
+  }
+  list.innerHTML = data.entries.map(e => {
+    const pillClass = e.type === 'voice_journal' ? 'voice'
+      : e.type === 'decision_log' ? 'decision' : 'interview';
+    const pillLabel = e.type === 'voice_journal' ? '음성'
+      : e.type === 'decision_log' ? '결정' : '인터뷰';
+    const date = new Date(e.created_at_ts * 1000).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const text = e.text.length > 200 ? e.text.slice(0, 200) + '...' : e.text;
+    return `<div style="padding: 10px 0; border-bottom: 1px solid var(--border);">
+      <div style="margin-bottom: 4px;"><span class="pill ${pillClass}">${pillLabel}</span></div>
+      <div class="text" style="font-size: 13px;">${escapeHtml(text)}</div>
+      <div class="meta"><span>${date}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ─────────────────────────────────────────────
+// 인터뷰 채팅
+// ─────────────────────────────────────────────
+let interviewMessages = [];
+
+const chatContainer = document.getElementById('chatContainer');
+const chatInput = document.getElementById('chatInput');
+
+document.getElementById('sendChatBtn').addEventListener('click', sendInterviewMessage);
+
+async function sendInterviewMessage() {
+  const text = chatInput.value.trim();
+  if (!text) {
+    // 첫 시작: 빈 입력으로 시작
+    if (interviewMessages.length === 0) {
+      await fetchNextQuestion([{ role: 'user', content: '인터뷰를 시작해줘.' }], false);
+      return;
+    }
+    return;
+  }
+  interviewMessages.push({ role: 'user', content: text });
+  appendChatMsg('user', text);
+  chatInput.value = '';
+  await fetchNextQuestion(interviewMessages, true);
+}
+
+async function fetchNextQuestion(messages, addUser) {
+  appendChatMsg('assistant', '...', true);
+  try {
+    const res = await fetch('/api/interview/turn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+    const data = await res.json();
+    removeLoadingMsg();
+    if (data.response) {
+      interviewMessages.push({ role: 'assistant', content: data.response });
+      appendChatMsg('assistant', data.response);
+    }
+  } catch (e) {
+    removeLoadingMsg();
+    appendChatMsg('assistant', '오류: ' + e.message);
+  }
+}
+
+function appendChatMsg(role, text, isLoading) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  if (isLoading) div.dataset.loading = '1';
+  div.textContent = text;
+  chatContainer.appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function removeLoadingMsg() {
+  const loading = chatContainer.querySelector('[data-loading="1"]');
+  if (loading) loading.remove();
+}
+
+document.getElementById('endInterviewBtn').addEventListener('click', async () => {
+  if (interviewMessages.length === 0) return;
+  if (!confirm('인터뷰를 종료하고 답변들을 저장할까요?')) return;
+  const btn = document.getElementById('endInterviewBtn');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    const res = await fetch('/api/interview/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript: interviewMessages }),
+    });
+    const data = await res.json();
+    alert(`${data.saved_count}개 답변이 저장되었습니다.`);
+    interviewMessages = [];
+    chatContainer.innerHTML = '';
+  } finally {
+    btn.disabled = false; btn.textContent = '인터뷰 종료·저장';
+  }
+});
+
+// 첫 진입 시 인터뷰어가 먼저 말 걸도록
+document.querySelector('[data-panel="interview"]').addEventListener('click', () => {
+  if (interviewMessages.length === 0) {
+    setTimeout(() => fetchNextQuestion([{ role: 'user', content: '오늘 인터뷰를 시작해줘. 가장 흥미로운 주제로.' }], false), 300);
+  }
+});
+
+// ─────────────────────────────────────────────
+// Spine 추출 / 표시
+// ─────────────────────────────────────────────
+async function loadSpine() {
+  const res = await fetch('/api/spine');
+  const data = await res.json();
+  if (data.spine) {
+    document.getElementById('spineContent').innerHTML = renderMarkdown(data.spine);
+  }
+}
+
+document.getElementById('extractSpineBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('extractSpineBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>추출 중... (10-30초)';
+  document.getElementById('spineContent').innerHTML = '<div class="empty">분석 중...</div>';
+  try {
+    const res = await fetch('/api/spine/extract', { method: 'POST' });
+    const data = await res.json();
+    if (data.spine) {
+      document.getElementById('spineContent').innerHTML = renderMarkdown(data.spine);
+    }
+  } catch (e) {
+    document.getElementById('spineContent').textContent = '오류: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Spine 재추출';
+  }
+});
+
+// 매우 단순한 markdown → HTML
+function renderMarkdown(md) {
+  return escapeHtml(md)
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+// ─────────────────────────────────────────────
+// Ask Me — RAG + Spine 스트리밍
+// ─────────────────────────────────────────────
+document.getElementById('askBtn').addEventListener('click', askQuestion);
+document.getElementById('askInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') askQuestion();
+});
+
+async function askQuestion() {
+  const question = document.getElementById('askInput').value.trim();
+  if (!question) return;
+  const btn = document.getElementById('askBtn');
+  const responseDiv = document.getElementById('askResponse');
+  const metaDiv = document.getElementById('askMeta');
+  btn.disabled = true;
+  responseDiv.style.display = 'block';
+  responseDiv.textContent = '';
+  metaDiv.textContent = '';
+
+  try {
+    const res = await fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          if (evt.type === 'meta') {
+            metaDiv.textContent = `검색된 기록 ${evt.retrieved}개 · Spine ${evt.has_spine ? '사용' : '없음'}`;
+          } else if (evt.type === 'chunk') {
+            fullText += evt.text;
+            responseDiv.textContent = fullText;
+          } else if (evt.type === 'error') {
+            responseDiv.textContent = '오류: ' + evt.message;
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+  } catch (e) {
+    responseDiv.textContent = '오류: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// 초기 로드
+refreshEntries();
+</script>
+
+</body>
+</html>
